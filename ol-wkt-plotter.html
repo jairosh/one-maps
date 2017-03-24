@@ -46,16 +46,18 @@
         var format = new ol.format.WKT();
 
         features.clear();
-
+        var feature;
         for(var i=0; i < array.length; i++){
-          var feature = format.readFeature(array[i], {
+          feature = format.readFeature(array[i], {
             dataProjection: proj,
             featureProjection: 'EPSG:3857'
           });
 
-          features.push(feature);  
+        var extent = feature.getGeometry().getExtent();
+        map.getView().fit(feature.getGeometry(), map.getSize());
+        features.push(feature);  
         }
-        console.log(text + " -- " + proj);
+        
       }
 
     </script>
@@ -69,7 +71,6 @@
         <textarea id="wktText" class="ta"></textarea><br/>
         <input type="button" name="plot" onclick="plot()" value="Plot WKT"/><br/>
         <input type="radio" name="projection" value="EPSG:4326" checked="true">EPSG:4326 <br/>
-        <input type="radio" name="projection" value="EPSG:900913"/>EPSG:900913<br/>
         <input type="radio" name="projection" value="EPSG:3857"/>EPSG:3857
       </div>
     </div>
