@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "one-maps"
+version = "0.1.0"
+description = "Scripts to create and edit map files for the ONE Simulator"
+authors = ["Jairo Sanchez <jairojsh@gmail.com>"]
+license = "GPLv3"
+readme = "README.md"
+packages = [{include = "one_maps"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+networkx = "^2.8.8"
+geomet = "^1.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
