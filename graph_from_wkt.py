@@ -9,6 +9,9 @@ import argparse
 import re
 from geomet import wkt
 import os
+import logging
+
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
 all_geometries = []
@@ -27,30 +30,26 @@ def main():
     args = parser.parse_args()
 
     if not os.path.isfile(args.input):
-        print 'ERROR: {} does not exist'.format(args.input)
+        logging.error('%s does not exist', args.input)        
         exit(1)
 
     if not os.path.isdir(args.outputDir):
         os.makedirs(args.outputDir)
-        print 'INFO: All WKT graphs will be written to {}'.format(
-            args.outputDir)
+        logging.info('All WKT graphs will be written to %s', args.outputDir)        
 
     else:
         for dirpath, dirnames, files in os.walk(args.outputDir):
             if files:
-                print 'ERROR: {} already exists and is not empty'.format(
-                    args.outputDir)
+                logging.error('%s already exists and is not empty', args.outputDir)
                 exit(2)
             else:
-                print 'INFO: All WKT graphs will be written to {}'.format(
-                    args.outputDir)
+                logging.info('All WKT graphs will be written to %s', args.outputDir)
 
     empty_line = re.compile('^ *$')
     with open(args.input) as infile:
         for line in infile:
             if empty_line.match(line):
                 continue
-
             all_geometries.append(wkt.loads(line))
 
     G = nx.Graph()
@@ -58,16 +57,15 @@ def main():
         if geometry['type'] in ['Point', 'LineString', 'MultiLineString']:
             add_geometry(geometry, G)
 
-        elif geometry['type'] is 'GeometryCollection':
+        elif geometry['type'] == 'GeometryCollection':
             for geom in geometry['geometries']:
                 add_geometry(geom, G)
 
-    print 'The graph has {0} nodes and {1} edges'.format(G.number_of_nodes(),
-                                                         G.number_of_edges())
+    logging.info('The graph has %d nodes and %d edges', G.number_of_nodes(),
+                                                        G.number_of_edges())
     components = connected_components(G)
     lComp = components[0]
-    print 'The largest connected component has {} nodes and {} edges'.format(
-        lComp.number_of_nodes(), lComp.number_of_edges())
+    logging.info('The largest connected component has %d nodes and %d edges', lComp.number_of_nodes(), lComp.number_of_edges())
     write_all_graphs(args.outputDir, components)
 
 
@@ -88,16 +86,16 @@ def write_graph(filename, graph):
 
 
 def add_geometry(geometry, graph):
-    if geometry['type'] is 'Point':
+    if geometry['type'] == 'Point':
         x = geometry['coordinates'][0]
         y = geometry['coordinates'][1]
         create_node_from_point(x, y, graph)
 
-    elif geometry['type'] is 'LineString':
+    elif geometry['type'] == 'LineString':
         create_nodes_from_line(geometry['coordinates'], graph)
 
-    elif geometry['type'] is 'MultiLineString':
-            print 'MULTILINE'
+    elif geometry['type'] == 'MultiLineString':
+            print('MULTILINE')
 
 
 def create_node_from_point(x, y, graph):
@@ -124,8 +122,8 @@ def create_nodes_from_line(pointlist, graph):
 def connected_components(G):
     subgraphs = list(nx.connected_component_subgraphs(G, copy=True))
     comp = max(nx.connected_component_subgraphs(G), key=len)
-    print 'There\'s {0} connected subgraphs'.format(len(subgraphs))
-    print 'Largest component has {0} nodes'.format(comp.number_of_nodes())
+    logging.info('There\'s %d connected subgraphs', len(subgraphs))
+    logging.info('Largest component has %d nodes', comp.number_of_nodes())
 
     largest_component = nx.Graph()
     cardinality = 0
