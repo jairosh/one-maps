@@ -11,8 +11,9 @@ from geomet import wkt
 import os
 import logging
 import csv
+import sys
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s', level=logging.DEBUG)
 
 
 def main():
@@ -56,7 +57,7 @@ def main():
     if len(all_geometries) == 0:
         logging.error('No geometries were found in file')
         exit(4)
-
+ 
     G = nx.Graph()
     for geometry in all_geometries:
         if geometry['type'] in ['Point', 'LineString', 'MultiLineString']:
@@ -69,6 +70,13 @@ def main():
     logging.info('The graph has %d nodes and %d edges', G.number_of_nodes(),
                                                         G.number_of_edges())
     components = connected_components(G)
+    
+    # bbox = get_bounding_box(components[-1])
+    newC = shift_graph_to_origin(components[0], get_bounding_box(components[0]))
+    bbox = get_bounding_box(newC)
+    logging.info('bounding box: \n%s', bbox_as_wkt(bbox))
+    write_graph(args.outputDir + '/shifted.wkt', newC)
+
     write_all_graphs(args.outputDir, components)
 
 
@@ -117,7 +125,7 @@ def write_all_graphs(outputDir, graphList):
     write_graph(outputDir + '_largest_component.wkt', graphList.pop(0))
     index = 1
     for graph in graphList:
-        graphFile = '{0}_subgraph_{1}.wkt'.format(outputDir, index)
+        graphFile = '{0}component_{1}.wkt'.format(outputDir, index)
         write_graph(graphFile, graph)
         index += 1
 
@@ -206,5 +214,80 @@ def connected_components(G):
     return subgraphs
 
 
+def get_bounding_box(G):
+    """Obtains the bounding box of a graph representing geographic features
+
+    Args:
+        G (networkx.Graph): The input graph
+
+    Returns:
+        list: The list of tuples indicating the bounding box coordinates
+    """
+    box = [(0, 0), (0, 0)]
+    x_lower = sys.maxsize
+    y_lower = sys.maxsize
+    x_high = -10000000000
+    y_high = -10000000000
+    for node in G:
+        if node[0] < x_lower: x_lower = node[0]
+        if node[1] < y_lower: y_lower = node[1]
+        if node[0] > x_high: x_high = node[0]
+        if node[1] > y_high: y_high = node[1]
+
+    box = [(x_lower, y_lower), (x_high, y_high)]
+    return box
+
+
+def bbox_as_wkt(bbox):
+    """Creates a WKT string representing a bounding box
+
+    Args:
+        bbox (list): The list of tuples with two ordinate pairs representing the 
+        bounding box
+
+    Returns:
+        str: A Polygon feature in WKT 
+    """
+    x1, y1 = bbox[0]
+    x2, y2 = bbox[1]
+    return 'POLYGON (({} {}, {} {}, {} {}, {} {}))'.format(x1, y1,
+                                                           x1, y2,
+                                                           x2, y2,
+                                                           x2, y1,
+                                                           x1, y1)
+
+
+
+def shift_graph_to_origin(G, bounding_box):
+    """ONE Simulator can have troubles with negative coordinates so for safety we shift the 
+    map so the bounding box it's on the first quadrant
+
+    Args:
+        G (networkx.Graph): The graph with the geographic features to shift.
+    
+    Returns:
+        networkx.Graph: A copy of the passed graph but the nodes are shifted so they all
+        have positive coordinates.
+    """
+    G1 = nx.Graph()
+    #bbox = get_bounding_box(G)
+    x_shift = bounding_box[0][0] 
+    y_shift = bounding_box[0][1] 
+    logging.debug('Minimal coordinates: %s', bounding_box[0])
+    x_shift = -x_shift
+    y_shift = -y_shift
+    logging.debug('Shifting by: %f, %f', x_shift, y_shift)
+    for edge in G.edges():
+        u_x = edge[0][0] + x_shift
+        u_y = edge[0][1] + y_shift
+        v_x = edge[1][0] + x_shift
+        v_y = edge[1][1] + y_shift
+        edge_wkt = 'LINESTRING ({0} {1}, {2} {3})'.format(u_x, u_y, v_x, v_y)                        
+        G1.add_edge((u_x, u_y), 
+                    (v_x, v_y),
+                    wkt=edge_wkt)     
+    return G1
+
 if __name__ == '__main__':
     main()
+
