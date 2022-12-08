@@ -11,6 +11,7 @@ packages = [{include = "one_maps"}]
 python = "^3.10"
 networkx = "^2.8.8"
 geomet = "^1.0.0"
+matplotlib = "^3.6.2"
 
 
 [build-system]
