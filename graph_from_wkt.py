@@ -18,10 +18,9 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input',
+    parser.add_argument('input',
                         type=str,
-                        help='Input WKT file',
-                        required=True)
+                        help='Input WKT file')
     parser.add_argument('-o', '--outputDir',
                         type=str,
                         help='Target directory to save all the graphs',
