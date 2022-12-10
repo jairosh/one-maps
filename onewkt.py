@@ -13,7 +13,7 @@ import logging
 import csv
 import sys
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)s - %(message)s', level=logging.INFO)
 
 
 def main():
