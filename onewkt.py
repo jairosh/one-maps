@@ -28,12 +28,12 @@ def main():
     args = parser.parse_args()
 
     if not os.path.isfile(args.input):
-        logging.error('%s does not exist', args.input)        
+        logging.error('%s does not exist', args.input)
         exit(1)
 
     if not os.path.isdir(args.outputDir):
         os.makedirs(args.outputDir)
-        logging.info('All WKT graphs will be written to %s', args.outputDir)        
+        logging.info('All WKT graphs will be written to %s', args.outputDir)
 
     else:
         for dirpath, dirnames, files in os.walk(args.outputDir):
@@ -56,7 +56,7 @@ def main():
     if len(all_geometries) == 0:
         logging.error('No geometries were found in file')
         exit(4)
- 
+
     G = nx.Graph()
     for geometry in all_geometries:
         if geometry['type'] in ['Point', 'LineString', 'MultiLineString']:
@@ -66,17 +66,20 @@ def main():
             for geom in geometry['geometries']:
                 add_geometry(geom, G)
 
+    if G.number_of_nodes() == 0:
+        logging.error('Could not build a graph')
+        exit(5)
     logging.info('The graph has %d nodes and %d edges', G.number_of_nodes(),
-                                                        G.number_of_edges())
+                 G.number_of_edges())
     components = connected_components(G)
-    
-    # bbox = get_bounding_box(components[-1])
-    newC = shift_graph_to_origin(components[0], get_bounding_box(components[0]))
-    bbox = get_bounding_box(newC)
-    logging.info('bounding box: \n%s', bbox_as_wkt(bbox))
-    write_graph(args.outputDir + '/shifted.wkt', newC)
 
+    # bbox = get_bounding_box(components[-1])
+    shifted_graph, dx, dy = shift_graph_to_origin(components[0], get_bounding_box(components[0]))
+    bbox = get_bounding_box(shifted_graph)
+    logging.info('bounding box: \n%s', bbox_as_wkt(bbox))
+    write_graph(args.outputDir + '/shifted.wkt', shifted_graph)
     write_all_graphs(args.outputDir, components)
+    write_parameters([dx, dy], bbox, args.outputDir + '/params.json')
 
 
 def handle_csv(fname):
@@ -138,9 +141,33 @@ def write_graph(filename, graph):
     """
     logging.info('Writing graph at %s', filename)
     with open(filename, 'w') as out:
-        for edge in graph.edges():            
+        for edge in graph.edges():
             out.write(graph[edge[0]][edge[1]]['wkt'])
             out.write('\n')
+
+
+def write_parameters(displacement, bbox, filepath):
+    """
+    Writes the parameters of the operations made to the map
+    Args:
+        displacement: list of 2 values containing the displacement in x and y directions
+        bbox: The bounding box of the component (dimmensions are in the same coordinates)
+        filepath: Path of the destination file
+
+    Returns:
+        None
+    """
+    logging.info(f'Writing the parameters to {filepath}')
+    with open(filepath, 'w') as out:
+        out.writelines(f"{{"
+                       f"\"box\": {{"
+                       f"\"upper_left\": [{bbox[0][0]}, {bbox[0][1]}],"
+                       f"\"bottom_right\": [{bbox[1][0]}, {bbox[1][1]}]"
+                       f"}},"
+                       f"\"wkt_bbox\": \"{bbox_as_wkt(bbox)}\","
+                       f"\"x_offset\": {displacement[0]},"
+                       f"\"y_offset\": {displacement[1]}"
+                       f"}}")
 
 
 def add_geometry(geometry, graph):
@@ -161,7 +188,16 @@ def add_geometry(geometry, graph):
         create_nodes_from_line(geometry['coordinates'], graph)
 
     elif geometry['type'] == 'MultiLineString':
-            print('MULTILINE')
+        for line in geometry['coordinates']:
+            start_point = None
+            for point in line:
+                if start_point is None:
+                    start_point = point
+                    continue
+                end_point = point
+                # print(f'Line {start_point} -- {end_point}')
+                create_nodes_from_line([start_point, end_point], graph)
+                start_point = end_point
 
 
 def create_node_from_point(x, y, graph):
@@ -206,7 +242,7 @@ def connected_components(G):
 
     Returns:
         list: A list of the subgraphs, ordered by its number of nodes
-    """    
+    """
     subgraphs = [G.subgraph(c).copy() for c in sorted(nx.connected_components(G), key=len, reverse=True)]
     logging.info('There\'s %d connected subgraphs', len(subgraphs))
     logging.info('Largest component has %d nodes', subgraphs[0].number_of_nodes())
@@ -228,10 +264,14 @@ def get_bounding_box(G):
     x_high = -10000000000
     y_high = -10000000000
     for node in G:
-        if node[0] < x_lower: x_lower = node[0]
-        if node[1] < y_lower: y_lower = node[1]
-        if node[0] > x_high: x_high = node[0]
-        if node[1] > y_high: y_high = node[1]
+        if node[0] < x_lower:
+            x_lower = node[0]
+        if node[1] < y_lower:
+            y_lower = node[1]
+        if node[0] > x_high:
+            x_high = node[0]
+        if node[1] > y_high:
+            y_high = node[1]
 
     box = [(x_lower, y_lower), (x_high, y_high)]
     return box
@@ -256,37 +296,37 @@ def bbox_as_wkt(bbox):
                                                            x1, y1)
 
 
-
-def shift_graph_to_origin(G, bounding_box):
+def shift_graph_to_origin(graph, bounding_box):
     """ONE Simulator can have troubles with negative coordinates so for safety we shift the 
     map so the bounding box it's on the first quadrant
 
     Args:
-        G (networkx.Graph): The graph with the geographic features to shift.
+        graph (networkx.Graph): The graph with the geographic features to shift.
+        bounding_box:
     
     Returns:
-        networkx.Graph: A copy of the passed graph but the nodes are shifted so they all
-        have positive coordinates.
+        networkx.Graph, dx, dy: A copy of the passed graph but the nodes are shifted so they all
+        have positive coordinates, also the displacement made in both x and y directions
     """
-    G1 = nx.Graph()
-    #bbox = get_bounding_box(G)
-    x_shift = bounding_box[0][0] 
-    y_shift = bounding_box[0][1] 
+    shifted_graph = nx.Graph()
+    # bbox = get_bounding_box(G)
+    x_shift = bounding_box[0][0]
+    y_shift = bounding_box[0][1]
     logging.debug('Minimal coordinates: %s', bounding_box[0])
     x_shift = -x_shift
     y_shift = -y_shift
     logging.debug('Shifting by: %f, %f', x_shift, y_shift)
-    for edge in G.edges():
+    for edge in graph.edges():
         u_x = edge[0][0] + x_shift
         u_y = edge[0][1] + y_shift
         v_x = edge[1][0] + x_shift
         v_y = edge[1][1] + y_shift
-        edge_wkt = 'LINESTRING ({0} {1}, {2} {3})'.format(u_x, u_y, v_x, v_y)                        
-        G1.add_edge((u_x, u_y), 
+        edge_wkt = 'LINESTRING ({0} {1}, {2} {3})'.format(u_x, u_y, v_x, v_y)
+        shifted_graph.add_edge((u_x, u_y),
                     (v_x, v_y),
-                    wkt=edge_wkt)     
-    return G1
+                    wkt=edge_wkt)
+    return shifted_graph, x_shift, y_shift
+
 
 if __name__ == '__main__':
     main()
-
